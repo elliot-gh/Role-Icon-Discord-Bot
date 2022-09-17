@@ -1,0 +1,20 @@
+{
+    "extends": "@tsconfig/node16/tsconfig.json",
+    "compilerOptions": {
+        "target": "es2022",
+        "module": "es2022",
+        "outDir": "./dist",
+        "rootDir": ".",
+        "strict": true,
+        "moduleResolution": "node",
+        "esModuleInterop": true,
+        "sourceMap": true
+    },
+    "exclude": [
+        "node_modules",
+        "dist"
+    ],
+    "references": [
+        { "path": "../../.." }
+    ]
+}

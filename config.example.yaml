@@ -1,0 +1,6 @@
+# Copy this file as "config.yaml", and fill in the values as appropriate.
+# ------------------------------------------------------------------------------
+
+# The prefix used for role names.
+# WARNING: Changing this after using the bot is not something that is currently handled (won't delete/rename old roles).
+prefix: RoleIcon_

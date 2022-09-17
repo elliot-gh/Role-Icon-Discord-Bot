@@ -1,0 +1,13 @@
+{
+  "name": "role-icon-discord-bot",
+  "version": "1.0.0",
+  "repository": "git@github.com:elliot-gh/Role-Icon-Discord-Bot.git",
+  "author": "Elliot",
+  "license": "GPL-3.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "yarn@3.2.1",
+  "engines": {
+    "node": ">=16.15.0"
+  }
+}
