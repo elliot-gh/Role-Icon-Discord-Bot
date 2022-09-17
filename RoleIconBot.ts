@@ -135,7 +135,7 @@ export class RoleIconBot implements BotInterface {
         } catch (error) {
             if (error instanceof Error) {
                 console.error(`[RoleIconBot] Error in handleSetImage(): ${error}`);
-                await this.sendErrorMessage(interaction, error.message);
+                await this.sendErrorMessage(interaction, `Error setting role icon: ${error.message}`);
                 return;
             }
 
@@ -191,7 +191,7 @@ export class RoleIconBot implements BotInterface {
         } catch (error) {
             if (error instanceof Error) {
                 console.error(`[RoleIconBot] Error in handleSetEmoji(): ${error}`);
-                await this.sendErrorMessage(interaction, error.message);
+                await this.sendErrorMessage(interaction, `Error setting role icon: ${error.message}`);
                 return;
             }
 
