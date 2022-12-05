@@ -1,7 +1,7 @@
 import { Stream } from "stream";
 import { BufferResolvable, ChatInputCommandInteraction, CommandInteraction, CreateRoleOptions, EditRoleOptions, EmbedBuilder, GatewayIntentBits, GuildEmoji, GuildMember, GuildMemberManager, Role, SlashCommandBuilder } from "discord.js";
 import { BotInterface } from "../../BotInterface";
-import { readYamlConfig } from "../../ConfigUtils";
+import { readYamlConfig } from "../../utils/ConfigUtils";
 import { RoleIconConfig } from "./RoleIconConfig";
 
 export class RoleIconBot implements BotInterface {
