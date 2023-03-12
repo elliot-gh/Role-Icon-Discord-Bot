@@ -1,5 +1,7 @@
 import { Stream } from "stream";
-import { BufferResolvable, ChatInputCommandInteraction, CommandInteraction, CreateRoleOptions, EditRoleOptions, EmbedBuilder, GatewayIntentBits, GuildEmoji, GuildMember, GuildMemberManager, Role, SlashCommandBuilder } from "discord.js";
+import { BufferResolvable, ChatInputCommandInteraction, CommandInteraction, EmbedBuilder,
+    GatewayIntentBits, GuildEmoji, GuildMember, GuildMemberManager, Role, RoleCreateOptions,
+    RoleEditOptions, SlashCommandBuilder } from "discord.js";
 import { BotInterface } from "../../BotInterface";
 import { readYamlConfig } from "../../utils/ConfigUtils";
 import { RoleIconConfig } from "./RoleIconConfig";
@@ -101,24 +103,13 @@ export class RoleIconBot implements BotInterface {
 
             console.log(`[RoleIconBot] handleSetImage() from member ${member.id} with attachment URL ${attachment.url}`);
             const contentType = attachment.contentType;
-            if (contentType!.indexOf("image") < 0) {
+            if (contentType == undefined || contentType.indexOf("image") < 0) {
                 console.error(`[RoleIconBot] Error in handleSetImage(): Non-image attachment for ${member.id}. URL is ${attachment.url}`);
                 await this.sendErrorMessage(interaction, "Non-image attachment received.");
                 return;
             }
 
-            let buffer = attachment.attachment;
-            if (!this.isBufferResolvable(buffer)) {
-                try {
-                    buffer = await this.streamToBuffer(buffer);
-                } catch (err) {
-                    console.error(`[RoleIconBot] Error while calling streamToBuffer(): ${err}`);
-                    await this.sendErrorMessage(interaction, "Error while processing attachment.");
-                    return;
-                }
-            }
-
-            const result = await this.createOrUpdateRole(member, buffer, interaction.guild!.members);
+            const result = await this.createOrUpdateRole(member, attachment.url, interaction.guild!.members);
             if (typeof(result) === "string") {
                 await this.sendErrorMessage(interaction, result);
                 return;
@@ -254,13 +245,13 @@ export class RoleIconBot implements BotInterface {
      * @param manager The discord.js GuildMemberManager
      * @returns The Role if created or properly updated, string with reason if failed
      */
-    async createOrUpdateRole(member: GuildMember, icon: CreateRoleOptions["icon"], manager: GuildMemberManager): Promise<Role | string> {
+    async createOrUpdateRole(member: GuildMember, icon: RoleCreateOptions["icon"], manager: GuildMemberManager): Promise<Role | string> {
         const roleName = this.config.prefix + member.id;
 
         try {
             let role = await this.findRole(member);
             if (role === null) {
-                const newRoleData: CreateRoleOptions = {
+                const newRoleData: RoleCreateOptions = {
                     name: roleName,
                     hoist: false,
                     position: Number.MAX_SAFE_INTEGER,
@@ -281,7 +272,7 @@ export class RoleIconBot implements BotInterface {
                     role: role
                 });
             } else {
-                const updatedRoleData: EditRoleOptions = {};
+                const updatedRoleData: RoleEditOptions = {};
                 if (typeof(icon) === "string" && RoleIconBot.REGEX_UNICODE_EMOJI.test(icon)) {
                     updatedRoleData.unicodeEmoji = icon;
                     updatedRoleData.icon = null;
