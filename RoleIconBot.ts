@@ -2,11 +2,12 @@ import { Stream } from "stream";
 import { BufferResolvable, ChatInputCommandInteraction, CommandInteraction, EmbedBuilder,
     GatewayIntentBits, GuildEmoji, GuildMember, GuildMemberManager, Role, RoleCreateOptions,
     RoleEditOptions, SlashCommandBuilder } from "discord.js";
-import { BotInterface } from "../../BotInterface";
-import { readYamlConfig } from "../../utils/ConfigUtils";
-import { RoleIconConfig } from "./RoleIconConfig";
+import { BotWithConfig } from "../../BotWithConfig";
 
-export class RoleIconBot implements BotInterface {
+export type RoleIconConfig = {
+    prefix: string
+}
+export class RoleIconBot extends BotWithConfig {
     private static readonly CMD_ROLEICON = "roleicon";
     private static readonly SUBCMD_SET_EMOJI = "emoji";
     private static readonly SUBCMD_SET_OPT_EMOJI = "emoji";
@@ -16,16 +17,18 @@ export class RoleIconBot implements BotInterface {
     private static readonly REGEX_UNICODE_EMOJI = /\p{Emoji_Presentation}{1}/u;
     private static readonly REGEX_DISCORD_EMOJI = /<:.+:[0-9]+>/;
 
-    intents: GatewayIntentBits[];
-    commands: [SlashCommandBuilder];
-    private slashRoleIcon: SlashCommandBuilder;
-    private config!: RoleIconConfig;
+    private readonly intents: GatewayIntentBits[];
+    private readonly commands: [SlashCommandBuilder];
+    private readonly config: RoleIconConfig;
 
     constructor() {
+        super("RoleIconBot", import.meta);
+        this.config = this.readYamlConfig<RoleIconConfig>("config.yaml");
         this.intents = [GatewayIntentBits.Guilds];
-        this.slashRoleIcon = new SlashCommandBuilder()
+        const slashRoleIcon = new SlashCommandBuilder()
             .setName(RoleIconBot.CMD_ROLEICON)
             .setDescription("Sets or removes your role icon.")
+            .setDMPermission(false)
             .addSubcommand(subcommand =>
                 subcommand
                     .setName(RoleIconBot.SUBCMD_SET_EMOJI)
@@ -53,7 +56,7 @@ export class RoleIconBot implements BotInterface {
                     .setName(RoleIconBot.SUBCMD_CLEAR)
                     .setDescription("Clears your role icon.")
             ) as SlashCommandBuilder;
-        this.commands = [this.slashRoleIcon];
+        this.commands = [slashRoleIcon];
     }
 
     async processCommand(interaction: CommandInteraction): Promise<void> {
@@ -61,7 +64,7 @@ export class RoleIconBot implements BotInterface {
             return;
         }
 
-        console.log(`[RoleIconBot]: got interaction: ${interaction}`);
+        this.logger.info(`got interaction: ${interaction}`);
         try {
             switch(interaction.options.getSubcommand()) {
                 case RoleIconBot.SUBCMD_SET_EMOJI:
@@ -75,41 +78,33 @@ export class RoleIconBot implements BotInterface {
                     break;
             }
         } catch (error) {
-            console.error(`[RoleIconBot] Uncaught error in processSlashCommand(): ${error}`);
+            this.logger.error(`Uncaught error in processSlashCommand(): ${error}`);
         }
     }
 
-    async init(): Promise<string | null> {
+    private async handleSetImage(interaction: ChatInputCommandInteraction): Promise<void> {
         try {
-            this.config = await readYamlConfig<RoleIconConfig>(import.meta, "config.yaml");
-        } catch (error) {
-            const errMsg = `[RoleIconBot] Unable to read config: ${error}`;
-            console.error(errMsg);
-            return errMsg;
-        }
+            if (interaction.guild === null) {
+                throw new Error("guild is null");
+            }
 
-        return null;
-    }
-
-    async handleSetImage(interaction: ChatInputCommandInteraction): Promise<void> {
-        try {
             const member = interaction.member as GuildMember;
             const attachment = interaction.options.getAttachment(RoleIconBot.SUBCMD_SET_OPT_IMAGE);
             if (attachment === null) {
-                console.error(`[RoleIconBot] Error in handleSetImage(): Empty attachment for ${member.id}`);
+                this.logger.error(`Error in handleSetImage(): Empty attachment for ${member.id}`);
                 await this.sendErrorMessage(interaction, "No attachment receieved.");
                 return;
             }
 
-            console.log(`[RoleIconBot] handleSetImage() from member ${member.id} with attachment URL ${attachment.url}`);
+            this.logger.info(`handleSetImage() from member ${member.id} with attachment URL ${attachment.url}`);
             const contentType = attachment.contentType;
             if (contentType == undefined || contentType.indexOf("image") < 0) {
-                console.error(`[RoleIconBot] Error in handleSetImage(): Non-image attachment for ${member.id}. URL is ${attachment.url}`);
+                this.logger.error(`Error in handleSetImage(): Non-image attachment for ${member.id}. URL is ${attachment.url}`);
                 await this.sendErrorMessage(interaction, "Non-image attachment received.");
                 return;
             }
 
-            const result = await this.createOrUpdateRole(member, attachment.url, interaction.guild!.members);
+            const result = await this.createOrUpdateRole(member, attachment.url, interaction.guild.members);
             if (typeof(result) === "string") {
                 await this.sendErrorMessage(interaction, result);
                 return;
@@ -122,25 +117,29 @@ export class RoleIconBot implements BotInterface {
                     .setColor(0x00FF00)
             ], ephemeral: true});
 
-            console.log(`[RoleIconBot] handleSetImage() success for ${member.id}`);
+            this.logger.info(`handleSetImage() success for ${member.id}`);
         } catch (error) {
             if (error instanceof Error) {
-                console.error(`[RoleIconBot] Error in handleSetImage(): ${error}`);
+                this.logger.error(`Error in handleSetImage(): ${error}`);
                 await this.sendErrorMessage(interaction, `Error setting role icon: ${error.message}`);
                 return;
             }
 
             const unknown = `Unknown error: ${error}`;
-            console.error(`[RoleIconBot] Error in handleSetImage(): ${unknown}`);
+            this.logger.error(`Error in handleSetImage(): ${unknown}`);
             await this.sendErrorMessage(interaction, "Unknown error while creating role. Bot owner should check logs.");
         }
     }
 
-    async handleSetEmoji(interaction: ChatInputCommandInteraction): Promise<void> {
+    private async handleSetEmoji(interaction: ChatInputCommandInteraction): Promise<void> {
         try {
+            if (interaction.guild === null) {
+                throw new Error("guild is null");
+            }
+
             const member = interaction.member as GuildMember;
             const emojiStr = interaction.options.getString(RoleIconBot.SUBCMD_SET_OPT_EMOJI, true).trim();
-            console.log(`[RoleIconBot] handleSetEmoji() with emoji string ${emojiStr} from member ${member.id}`);
+            this.logger.info(`handleSetEmoji() with emoji string ${emojiStr} from member ${member.id}`);
 
             const possibleUnicodeEmoji = RoleIconBot.REGEX_UNICODE_EMOJI.test(emojiStr);
             const possibleDiscordEmoji = RoleIconBot.REGEX_DISCORD_EMOJI.test(emojiStr);
@@ -154,9 +153,9 @@ export class RoleIconBot implements BotInterface {
                 const emojiIdSplit = emojiStr.split(":")[2];
                 const emojiId = emojiIdSplit.substring(0, emojiIdSplit.indexOf(">"));
                 try {
-                    newEmoji = await interaction.guild!.emojis.fetch(emojiId);
+                    newEmoji = await interaction.guild.emojis.fetch(emojiId);
                 } catch (error) {
-                    console.error(`[RoleIconBot] Error fetching Discord emoji: ${error}`);
+                    this.logger.error(`Error fetching Discord emoji: ${error}`);
                     await this.sendErrorMessage(interaction, `Error while finding Discord emoji ${emojiStr}. Emoji may not exist in this guild or is invalid.`);
                     return;
                 }
@@ -165,7 +164,7 @@ export class RoleIconBot implements BotInterface {
                 newEmoji = emojiArr[0];
             }
 
-            const result = await this.createOrUpdateRole(member, newEmoji, interaction.guild!.members);
+            const result = await this.createOrUpdateRole(member, newEmoji, interaction.guild.members);
             if (typeof(result) === "string") {
                 await this.sendErrorMessage(interaction, result);
                 return;
@@ -178,24 +177,24 @@ export class RoleIconBot implements BotInterface {
                     .setColor(0x00FF00)
             ], ephemeral: true});
 
-            console.log(`[RoleIconBot] handleSetEmoji() success for ${member.id}`);
+            this.logger.info(`handleSetEmoji() success for ${member.id}`);
         } catch (error) {
             if (error instanceof Error) {
-                console.error(`[RoleIconBot] Error in handleSetEmoji(): ${error}`);
+                this.logger.error(`Error in handleSetEmoji(): ${error}`);
                 await this.sendErrorMessage(interaction, `Error setting role icon: ${error.message}`);
                 return;
             }
 
             const unknown = `Unknown error: ${error}`;
-            console.error(`[RoleIconBot] Error in handleSetEmoji(): ${unknown}`);
+            this.logger.error(`Error in handleSetEmoji(): ${unknown}`);
             await this.sendErrorMessage(interaction, "Unknown error while creating role. Bot owner should check logs.");
         }
     }
 
-    async handleClear(interaction: ChatInputCommandInteraction): Promise<void> {
+    private async handleClear(interaction: ChatInputCommandInteraction): Promise<void> {
         try {
             const member = interaction.member as GuildMember;
-            console.log(`[RoleIconBot] Got clear subcommand from member ${member.id}`);
+            this.logger.info(`Got clear subcommand from member ${member.id}`);
             const result = await this.deleteRole(member);
             if (typeof(result) === "string") {
                 await this.sendErrorMessage(interaction, `Failed to delete role: ${result}`);
@@ -209,9 +208,9 @@ export class RoleIconBot implements BotInterface {
                     .setColor(0x00FF00)
             ], ephemeral: true});
 
-            console.log("[RoleIconBot] handleClear() success");
+            this.logger.info("handleClear() success");
         } catch (error) {
-            console.error(`[RoleIconBot] Error in handleClear(): ${error}`);
+            this.logger.error(`Error in handleClear(): ${error}`);
             await this.sendErrorMessage(interaction, "Unknown error while clearing role. Bot owner should check logs.");
         }
     }
@@ -221,7 +220,7 @@ export class RoleIconBot implements BotInterface {
      * @param member The discord.js member
      * @returns Role if found, null if not
      */
-    async findRole(member: GuildMember): Promise<Role | null> {
+    private async findRole(member: GuildMember): Promise<Role | null> {
         const roleName = this.config.prefix + member.id;
 
         try {
@@ -230,10 +229,10 @@ export class RoleIconBot implements BotInterface {
                 return null;
             }
 
-            console.log(`[RoleIconBot] Found role: ${roleName}`);
+            this.logger.info(`Found role: ${roleName}`);
             return role;
         } catch (error) {
-            console.error(`[RoleIconBot] Error while finding role: ${error}`);
+            this.logger.error(`Error while finding role: ${error}`);
             return null;
         }
     }
@@ -245,7 +244,7 @@ export class RoleIconBot implements BotInterface {
      * @param manager The discord.js GuildMemberManager
      * @returns The Role if created or properly updated, string with reason if failed
      */
-    async createOrUpdateRole(member: GuildMember, icon: RoleCreateOptions["icon"], manager: GuildMemberManager): Promise<Role | string> {
+    private async createOrUpdateRole(member: GuildMember, icon: RoleCreateOptions["icon"], manager: GuildMemberManager): Promise<Role | string> {
         const roleName = this.config.prefix + member.id;
 
         try {
@@ -287,12 +286,12 @@ export class RoleIconBot implements BotInterface {
             return role;
         } catch (err) {
             if (err instanceof Error) {
-                console.error(`[RoleIconBot] Error while creating role: ${err}`);
+                this.logger.error(`Error while creating role: ${err}`);
                 return err.message;
             }
 
             const unknown = `Unknown error: ${err}`;
-            console.error(`[RoleIconBot] Error while creating role: ${unknown}`);
+            this.logger.error(`Error while creating role: ${unknown}`);
             return unknown;
         }
     }
@@ -302,7 +301,7 @@ export class RoleIconBot implements BotInterface {
      * @param member The member
      * @returns string with reason if failed, null if success
      */
-    async deleteRole(member: GuildMember): Promise<string | null> {
+    private async deleteRole(member: GuildMember): Promise<string | null> {
         try {
             const role = await this.findRole(member);
             if (role === null) {
@@ -313,12 +312,12 @@ export class RoleIconBot implements BotInterface {
             return null;
         } catch (err) {
             if (err instanceof Error) {
-                console.error(`[RoleIconBot] Error while deleting role: ${err}`);
+                this.logger.error(`Error while deleting role: ${err}`);
                 return "Error while deleting role. Bot owner should check logs.";
             }
 
             const unknown = "Unknown error while deleting role. Bot owner should check logs.";
-            console.error(`[RoleIconBot] Unknown error while creating role: ${unknown}`);
+            this.logger.error(`Unknown error while creating role: ${unknown}`);
             return unknown;
         }
     }
@@ -328,7 +327,7 @@ export class RoleIconBot implements BotInterface {
      * @param interaction The discord.js CommandInteraction
      * @param error The error. Could be typeof Error, string, or null.
      */
-    async sendErrorMessage(interaction: CommandInteraction, error: Error | string | null): Promise<void> {
+    private async sendErrorMessage(interaction: CommandInteraction, error: Error | string | null): Promise<void> {
         let description = "Unknown error while setting icon. Bot owner should check the logs.";
         if (error instanceof Error) {
             description = error.message;
@@ -344,19 +343,25 @@ export class RoleIconBot implements BotInterface {
         ], ephemeral: true});
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    isBufferResolvable(buffer: any): buffer is BufferResolvable {
+    private isBufferResolvable(buffer: unknown): buffer is BufferResolvable {
         return buffer instanceof Buffer || typeof(buffer) === "string";
     }
 
-    async streamToBuffer(stream: Stream): Promise<Buffer> {
+    private async streamToBuffer(stream: Stream): Promise<Buffer> {
         return new Promise((resolve, reject) => {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const buffer: any[] = [];
+            const buffer: Uint8Array[] = [];
             stream.on("data", (chunk => buffer.push(chunk)));
             stream.on("end", () => resolve(Buffer.concat(buffer)));
             stream.on("error", reject);
         });
+    }
+
+    getIntents(): GatewayIntentBits[] {
+        return this.intents;
+    }
+
+    getSlashCommands(): (SlashCommandBuilder)[] {
+        return this.commands;
     }
 }
 
